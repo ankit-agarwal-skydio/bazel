@@ -27,18 +27,24 @@ import com.google.devtools.build.skyframe.SkyValue;
 /** Contains information about the REPO.bazel file at the root of a repo. */
 @AutoCodec
 public record RepoFileValue(
-    ImmutableMap<String, Object> packageArgsMap, ImmutableList<String> ignoredDirectories)
+    ImmutableMap<String, Object> packageArgsMap,
+    ImmutableList<String> ignoredDirectories,
+    ImmutableList<String> excludedDirectories)
     implements SkyValue {
   public RepoFileValue {
     requireNonNull(packageArgsMap, "packageArgsMap");
     requireNonNull(ignoredDirectories, "ignoredDirectories");
+    requireNonNull(excludedDirectories, "excludedDirectories");
   }
 
-  public static final RepoFileValue EMPTY = of(ImmutableMap.of(), ImmutableList.of());
+  public static final RepoFileValue EMPTY =
+      of(ImmutableMap.of(), ImmutableList.of(), ImmutableList.of());
 
   public static RepoFileValue of(
-      ImmutableMap<String, Object> packageArgsMap, ImmutableList<String> ignoredDirectories) {
-    return new RepoFileValue(packageArgsMap, ignoredDirectories);
+      ImmutableMap<String, Object> packageArgsMap,
+      ImmutableList<String> ignoredDirectories,
+      ImmutableList<String> excludedDirectories) {
+    return new RepoFileValue(packageArgsMap, ignoredDirectories, excludedDirectories);
   }
 
   public static Key key(RepositoryName repoName) {
