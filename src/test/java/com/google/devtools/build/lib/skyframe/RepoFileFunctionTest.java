@@ -56,6 +56,7 @@ public class RepoFileFunctionTest extends BuildViewTestCase {
     scratch.overwriteFile("MODULE.bazel", "bazel_dep(name='foo',version='1.0')");
     scratch.overwriteFile("abc/def/BUILD", "filegroup(name='what')");
     registry.addModule(createModuleKey("foo", "1.0"), "module(name='foo',version='1.0')");
+    scratch.overwriteFile(moduleRoot.getRelative("foo+1.0/WORKSPACE.bazel").getPathString());
     scratch.overwriteFile(
         moduleRoot.getRelative("foo+1.0/REPO.bazel").getPathString(),
         "repo(default_deprecation='EVERYTHING IS DEPRECATED')");
@@ -134,5 +135,43 @@ public class RepoFileFunctionTest extends BuildViewTestCase {
         "//abc/def:what",
         "`if` statements are not allowed in REPO.bazel files. You may use an `if` expression for"
             + " simple cases.");
+  }
+
+  @Test
+  public void ignoreDirectoriesWithExclude() throws Exception {
+    scratch.overwriteFile(
+        "REPO.bazel",
+        "ignore_directories([\"**/build\"], exclude=[\"tools/special/build\"])");
+    scratch.file("tools/special/build/BUILD", "filegroup(name='t')");
+    scratch.file("other/build/BUILD", "filegroup(name='t')");
+    invalidatePackages();
+    // Excluded directory should be visible
+    assertThat(getTarget("//tools/special/build:t")).isNotNull();
+  }
+
+  @Test
+  public void ignoreDirectoriesExcludeDefaultsToEmpty() throws Exception {
+    scratch.overwriteFile("REPO.bazel", "ignore_directories([\"**/build\"])");
+    scratch.file("any/build/BUILD", "filegroup(name='t')");
+    reporter.removeHandler(failFastHandler);
+    invalidatePackages();
+    assertTargetError("//any/build:t", "deleted");
+  }
+
+  @Test
+  public void ignoreDirectoriesExcludeWithGlob() throws Exception {
+    scratch.overwriteFile(
+        "REPO.bazel",
+        "ignore_directories([\"**/build\"], exclude=[\"apps/*/build\"])");
+    scratch.file("apps/foo/build/BUILD", "filegroup(name='t')");
+    scratch.file("apps/bar/build/BUILD", "filegroup(name='t')");
+    scratch.file("lib/build/BUILD", "filegroup(name='t')");
+    invalidatePackages();
+    // Glob exclusion matches
+    assertThat(getTarget("//apps/foo/build:t")).isNotNull();
+    assertThat(getTarget("//apps/bar/build:t")).isNotNull();
+    // Not matched by apps/*/build — still ignored
+    reporter.removeHandler(failFastHandler);
+    assertTargetError("//lib/build:t", "deleted");
   }
 }
