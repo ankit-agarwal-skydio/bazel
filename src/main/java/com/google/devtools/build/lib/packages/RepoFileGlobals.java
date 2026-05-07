@@ -39,18 +39,32 @@ public final class RepoFileGlobals {
               + " of strings and a directory is ignored if any of the given strings matches its"
               + " repository-relative path according to the semantics of the <code>glob()</code>"
               + " function. This function can be used to ignore directories that are implementation"
-              + " details of source control systems, output files of other build systems, etc.",
+              + " details of source control systems, output files of other build systems, etc."
+              + " <p>An optional <code>exclude</code> parameter can be used to specify directories"
+              + " that should NOT be ignored even if they match the ignore patterns.",
       useStarlarkThread = true,
       parameters = {
         @Param(
             name = "dirs",
             allowedTypes = {
               @ParamType(type = Sequence.class, generic1 = String.class),
-            })
+            }),
+        @Param(
+            name = "exclude",
+            allowedTypes = {
+              @ParamType(type = Sequence.class, generic1 = String.class),
+            },
+            defaultValue = "[]",
+            named = true,
+            doc = "List of directories to exclude from ignoring (negation patterns)")
       })
-  public void ignoreDirectories(Iterable<?> dirsUnchecked, StarlarkThread thread)
+  public void ignoreDirectories(
+      Iterable<?> dirsUnchecked,
+      Iterable<?> excludeUnchecked,
+      StarlarkThread thread)
       throws EvalException {
     Sequence<String> dirs = Sequence.cast(dirsUnchecked, String.class, "dirs");
+    Sequence<String> exclude = Sequence.cast(excludeUnchecked, String.class, "exclude");
     RepoThreadContext context = RepoThreadContext.fromOrFail(thread, "repo()");
 
     if (context.isIgnoredDirectoriesSet()) {
@@ -58,6 +72,7 @@ public final class RepoFileGlobals {
     }
 
     context.setIgnoredDirectories(dirs);
+    context.setExcludedDirectories(exclude);
   }
 
   @StarlarkMethod(
