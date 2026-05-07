@@ -141,9 +141,27 @@ public class IgnoredSubdirectoriesTest {
     IgnoredSubdirectories ignored =
         IgnoredSubdirectories.of(prefixes(), patterns("**/build"), excludes("**/test_data/build"));
 
+    // Directly matches the exclusion — not ignored
     assertThat(ignored.matchingEntry(PathFragment.create("test_data/build"))).isNull();
     assertThat(ignored.matchingEntry(PathFragment.create("foo/test_data/build"))).isNull();
+    // src/build cannot be pruned because src/build/test_data/build would match the exclusion.
+    // This is conservative but correct — the tree walker needs to descend into src/build
+    // to discover src/build/test_data/build.
+    assertThat(ignored.matchingEntry(PathFragment.create("src/build"))).isNull();
+  }
+
+  @Test
+  public void excludeWithExactPathDoesNotPreventUnrelatedPruning() throws Exception {
+    // Exact (non-glob) exclusion only prevents pruning for ancestors of that path
+    IgnoredSubdirectories ignored =
+        IgnoredSubdirectories.of(prefixes(), patterns("**/build"), excludes("tools/special/build"));
+
+    // Exact exclusion — tools/special/build cannot match beneath src/build,
+    // so src/build CAN be pruned
     assertThat(ignored.matchingEntry(PathFragment.create("src/build"))).isEqualTo("**/build");
+    assertThat(ignored.matchingEntry(PathFragment.create("lib/build"))).isEqualTo("**/build");
+    // But tools/special/build itself is excluded
+    assertThat(ignored.matchingEntry(PathFragment.create("tools/special/build"))).isNull();
   }
 
   @Test
