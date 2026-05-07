@@ -35,10 +35,19 @@ import java.io.IOException;
 import java.util.Objects;
 import javax.annotation.Nullable;
 
-/** A set of subdirectories to ignore during target pattern matching or globbing. */
+/**
+ * A set of subdirectories to ignore during target pattern matching or globbing, with optional
+ * exclusion patterns that override the ignore rules.
+ *
+ * <p>Exclusion patterns use the same glob semantics as ignore patterns. A directory that matches
+ * both an ignore pattern and an exclusion pattern is NOT ignored.
+ *
+ * <p>When deciding whether to prune a subtree during directory traversal, exclusions are checked to
+ * ensure we don't skip directories that contain excluded (un-ignored) children.
+ */
 public final class IgnoredSubdirectories {
   public static final IgnoredSubdirectories EMPTY =
-      new IgnoredSubdirectories(ImmutableSet.of(), ImmutableList.of(), ImmutableSet.of());
+      new IgnoredSubdirectories(ImmutableSet.of(), ImmutableList.of(), ImmutableList.of());
 
   private static final Splitter SLASH_SPLITTER = Splitter.on("/");
 
@@ -49,7 +58,9 @@ public final class IgnoredSubdirectories {
   // allocate new objects.
   private final ImmutableList<String> patterns;
   private final ImmutableList<String[]> splitPatterns;
-  private final ImmutableSet<PathFragment> traversalExclusions;
+
+  private final ImmutableList<String> excludePatterns;
+  private final ImmutableList<String[]> splitExcludePatterns;
 
   private static class Codec implements ObjectCodec<IgnoredSubdirectories> {
     private static final Codec INSTANCE = new Codec();
@@ -65,7 +76,7 @@ public final class IgnoredSubdirectories {
         throws SerializationException, IOException {
       context.serialize(obj.prefixes, codedOut);
       context.serialize(obj.patterns, codedOut);
-      context.serialize(obj.traversalExclusions, codedOut);
+      context.serialize(obj.excludePatterns, codedOut);
     }
 
     @Override
@@ -74,50 +85,51 @@ public final class IgnoredSubdirectories {
         throws SerializationException, IOException {
       ImmutableSet<PathFragment> prefixes = context.deserialize(codedIn);
       ImmutableList<String> patterns = context.deserialize(codedIn);
-      ImmutableSet<PathFragment> traversalExclusions = context.deserialize(codedIn);
+      ImmutableList<String> excludePatterns = context.deserialize(codedIn);
 
-      return new IgnoredSubdirectories(prefixes, patterns, traversalExclusions);
+      return new IgnoredSubdirectories(prefixes, patterns, excludePatterns);
     }
   }
 
   private IgnoredSubdirectories(
       ImmutableSet<PathFragment> prefixes,
       ImmutableList<String> patterns,
-      ImmutableSet<PathFragment> traversalExclusions) {
+      ImmutableList<String> excludePatterns) {
     this.prefixes = prefixes;
     this.patterns = patterns;
     this.splitPatterns =
         patterns.stream()
             .map(p -> Iterables.toArray(SLASH_SPLITTER.split(p), String.class))
             .collect(toImmutableList());
-    this.traversalExclusions = traversalExclusions;
+    this.excludePatterns = excludePatterns;
+    this.splitExcludePatterns =
+        excludePatterns.stream()
+            .map(p -> Iterables.toArray(SLASH_SPLITTER.split(p), String.class))
+            .collect(toImmutableList());
   }
 
   public static IgnoredSubdirectories of(ImmutableSet<PathFragment> prefixes) {
-    return of(prefixes, ImmutableList.of(), ImmutableSet.of());
+    return of(prefixes, ImmutableList.of(), ImmutableList.of());
   }
 
   public static IgnoredSubdirectories of(
       ImmutableSet<PathFragment> prefixes, ImmutableList<String> patterns) {
-    return of(prefixes, patterns, ImmutableSet.of());
+    return of(prefixes, patterns, ImmutableList.of());
   }
 
   public static IgnoredSubdirectories of(
       ImmutableSet<PathFragment> prefixes,
       ImmutableList<String> patterns,
-      ImmutableSet<PathFragment> traversalExclusions) {
-    if (prefixes.isEmpty() && patterns.isEmpty() && traversalExclusions.isEmpty()) {
+      ImmutableList<String> excludePatterns) {
+    if (prefixes.isEmpty() && patterns.isEmpty() && excludePatterns.isEmpty()) {
       return EMPTY;
     }
 
     for (PathFragment prefix : prefixes) {
       Preconditions.checkArgument(!prefix.isAbsolute());
     }
-    for (PathFragment exclusion : traversalExclusions) {
-      Preconditions.checkArgument(!exclusion.isAbsolute());
-    }
 
-    return new IgnoredSubdirectories(prefixes, patterns, traversalExclusions);
+    return new IgnoredSubdirectories(prefixes, patterns, excludePatterns);
   }
 
   public IgnoredSubdirectories withPrefix(PathFragment prefix) {
@@ -129,35 +141,28 @@ public final class IgnoredSubdirectories {
     ImmutableList<String> prefixedPatterns =
         patterns.stream().map(p -> prefix + "/" + p).collect(toImmutableList());
 
-    ImmutableSet<PathFragment> prefixedTraversalExclusions =
-        traversalExclusions.stream().map(prefix::getRelative).collect(toImmutableSet());
+    ImmutableList<String> prefixedExcludePatterns =
+        excludePatterns.stream().map(p -> prefix + "/" + p).collect(toImmutableList());
 
-    return new IgnoredSubdirectories(
-        prefixedPrefixes, prefixedPatterns, prefixedTraversalExclusions);
+    return new IgnoredSubdirectories(prefixedPrefixes, prefixedPatterns, prefixedExcludePatterns);
   }
 
   public IgnoredSubdirectories union(IgnoredSubdirectories other) {
     return new IgnoredSubdirectories(
         ImmutableSet.<PathFragment>builder().addAll(prefixes).addAll(other.prefixes).build(),
-        ImmutableSet.<String>builder().addAll(patterns).addAll(other.patterns).build().asList(),
-        ImmutableSet.<PathFragment>builder()
-            .addAll(traversalExclusions)
-            .addAll(other.traversalExclusions)
-            .build());
-  }
-
-  public IgnoredSubdirectories withTraversalExclusions(
-      ImmutableSet<PathFragment> traversalExclusions) {
-    return new IgnoredSubdirectories(this.prefixes, this.patterns, traversalExclusions);
+        ImmutableList.copyOf(
+            ImmutableSet.<String>builder().addAll(patterns).addAll(other.patterns).build()),
+        ImmutableList.copyOf(
+            ImmutableSet.<String>builder()
+                .addAll(excludePatterns)
+                .addAll(other.excludePatterns)
+                .build()));
   }
 
   /** Filters out entries that cannot match anything under {@code directory}. */
   public IgnoredSubdirectories filterForDirectory(PathFragment directory) {
     ImmutableSet<PathFragment> filteredPrefixes =
         prefixes.stream().filter(p -> p.startsWith(directory)).collect(toImmutableSet());
-
-    ImmutableSet<PathFragment> filteredTraversalExclusions =
-        traversalExclusions.stream().filter(p -> p.startsWith(directory)).collect(toImmutableSet());
 
     String[] splitDirectory =
         Iterables.toArray(SLASH_SPLITTER.split(directory.getPathString()), String.class);
@@ -168,8 +173,15 @@ public final class IgnoredSubdirectories {
       }
     }
 
+    ImmutableList.Builder<String> filteredExcludePatterns = ImmutableList.builder();
+    for (int i = 0; i < excludePatterns.size(); i++) {
+      if (UnixGlob.canMatchChild(splitExcludePatterns.get(i), splitDirectory)) {
+        filteredExcludePatterns.add(excludePatterns.get(i));
+      }
+    }
+
     return new IgnoredSubdirectories(
-        filteredPrefixes, filteredPatterns.build(), filteredTraversalExclusions);
+        filteredPrefixes, filteredPatterns.build(), filteredExcludePatterns.build());
   }
 
   public ImmutableSet<PathFragment> prefixes() {
@@ -177,7 +189,7 @@ public final class IgnoredSubdirectories {
   }
 
   public boolean isEmpty() {
-    return this.prefixes.isEmpty() && this.patterns.isEmpty();
+    return this.prefixes.isEmpty() && this.patterns.isEmpty() && this.excludePatterns.isEmpty();
   }
 
   /**
@@ -198,18 +210,48 @@ public final class IgnoredSubdirectories {
     return true;
   }
 
-  /** Returns the entry that matches a given directory or {@code null} if none. */
+  /**
+   * Returns the ignore entry that matches a given directory, or {@code null} if the directory
+   * should not be ignored.
+   *
+   * <p>This method handles two cases:
+   *
+   * <ul>
+   *   <li><b>Leaf check:</b> "Is this specific package ignored?" (used by PackageLookupFunction).
+   *       A directory that matches an exclusion pattern is not ignored.
+   *   <li><b>Pruning check:</b> "Can we skip this entire subtree?" (used by
+   *       ProcessPackageDirectory). A subtree cannot be pruned if any exclusion pattern could match
+   *       a descendant directory, because that descendant must remain visible.
+   * </ul>
+   */
   @Nullable
   public String matchingEntry(PathFragment directory) {
+    String[] segmentArray = Iterables.toArray(directory.segments(), String.class);
+
+    // First: does this directory directly match an exclusion? If so, never ignore it.
+    if (matchesAnyExclusion(segmentArray)) {
+      return null;
+    }
+
+    // Check prefix-based ignores (from .bazelignore or rooted patterns)
     for (PathFragment prefix : prefixes) {
       if (directory.startsWith(prefix)) {
+        // Before pruning this subtree, check whether any exclusion could match a descendant.
+        // If so, we must not prune — an un-ignored directory may live underneath.
+        if (anyExclusionCanMatchChild(segmentArray)) {
+          return null;
+        }
         return prefix.getPathString();
       }
     }
 
-    String[] segmentArray = Iterables.toArray(directory.segments(), String.class);
+    // Check glob-based ignore patterns
     for (int i = 0; i < patterns.size(); i++) {
       if (UnixGlob.matchesPrefix(splitPatterns.get(i), segmentArray)) {
+        // Same guard: don't prune if an exclusion could match a descendant.
+        if (anyExclusionCanMatchChild(segmentArray)) {
+          return null;
+        }
         return patterns.get(i);
       }
     }
@@ -217,13 +259,27 @@ public final class IgnoredSubdirectories {
     return null;
   }
 
-  /** Returns true if the directory matches any traversal exclusion or standard ignored entry. */
-  public boolean matchingEntryForTraversal(PathFragment directory) {
-    if (matchingEntry(directory) != null) {
-      return true;
+  /** Returns true if the directory path directly matches any exclusion pattern. */
+  private boolean matchesAnyExclusion(String[] segmentArray) {
+    for (int i = 0; i < splitExcludePatterns.size(); i++) {
+      if (UnixGlob.matchesPrefix(splitExcludePatterns.get(i), segmentArray)) {
+        return true;
+      }
     }
-    for (PathFragment exclusion : traversalExclusions) {
-      if (directory.startsWith(exclusion)) {
+    return false;
+  }
+
+  /**
+   * Returns true if any exclusion pattern could match a descendant of the given directory.
+   *
+   * <p>This prevents premature tree pruning: if an exclusion exists for {@code
+   * tools/channel_search/build} and we're currently at {@code tools}, we must not prune even though
+   * {@code **/build} matches {@code tools} as a prefix, because the excluded child needs to remain
+   * reachable.
+   */
+  private boolean anyExclusionCanMatchChild(String[] segmentArray) {
+    for (int i = 0; i < splitExcludePatterns.size(); i++) {
+      if (UnixGlob.canMatchChild(splitExcludePatterns.get(i), segmentArray)) {
         return true;
       }
     }
@@ -232,20 +288,19 @@ public final class IgnoredSubdirectories {
 
   @Override
   public boolean equals(Object other) {
-    if (!(other instanceof IgnoredSubdirectories)) {
+    if (!(other instanceof IgnoredSubdirectories that)) {
       return false;
     }
 
-    // splitPatterns is a function of patterns so it's enough to check if patterns is equal
-    IgnoredSubdirectories that = (IgnoredSubdirectories) other;
+    // splitPatterns/splitExcludePatterns are derived from patterns/excludePatterns
     return Objects.equals(this.prefixes, that.prefixes)
         && Objects.equals(this.patterns, that.patterns)
-        && Objects.equals(this.traversalExclusions, that.traversalExclusions);
+        && Objects.equals(this.excludePatterns, that.excludePatterns);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(prefixes, patterns, traversalExclusions);
+    return Objects.hash(prefixes, patterns, excludePatterns);
   }
 
   @Override
@@ -253,7 +308,7 @@ public final class IgnoredSubdirectories {
     return MoreObjects.toStringHelper("IgnoredSubdirectories")
         .add("prefixes", prefixes)
         .add("patterns", patterns)
-        .add("traversalExclusions", traversalExclusions)
+        .add("excludePatterns", excludePatterns)
         .toString();
   }
 }
