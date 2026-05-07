@@ -272,10 +272,10 @@ public final class IgnoredSubdirectories {
   /**
    * Returns true if any exclusion pattern could match a descendant of the given directory.
    *
-   * <p>This prevents premature tree pruning: if an exclusion exists for {@code
-   * tools/channel_search/build} and we're currently at {@code tools}, we must not prune even though
-   * {@code **/build} matches {@code tools} as a prefix, because the excluded child needs to remain
-   * reachable.
+   * <p>This prevents premature tree pruning: if an exclusion exists for
+   * {@code tools/channel_search/build} and we're currently at {@code tools}, we must not prune
+   * even though a {@code **&#47;build} pattern matches {@code tools} as a prefix, because the
+   * excluded child needs to remain reachable.
    */
   private boolean anyExclusionCanMatchChild(String[] segmentArray) {
     for (int i = 0; i < splitExcludePatterns.size(); i++) {
