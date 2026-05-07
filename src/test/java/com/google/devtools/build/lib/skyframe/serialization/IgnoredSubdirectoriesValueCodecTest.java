@@ -23,7 +23,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/** Tests for {@code IgnoredSubdirectoriesValueCodec}. */
+/** Tests for IgnoredPackagePrefixesValueCodec. */
 @RunWith(JUnit4.class)
 public class IgnoredSubdirectoriesValueCodecTest {
 
@@ -33,6 +33,10 @@ public class IgnoredSubdirectoriesValueCodecTest {
 
   private static ImmutableList<String> patterns(String... patterns) {
     return ImmutableList.copyOf(patterns);
+  }
+
+  private static ImmutableList<String> excludes(String... excludes) {
+    return ImmutableList.copyOf(excludes);
   }
 
   @Test
@@ -45,6 +49,18 @@ public class IgnoredSubdirectoriesValueCodecTest {
             IgnoredSubdirectoriesValue.of(prefixes(), patterns("foo")),
             IgnoredSubdirectoriesValue.of(prefixes(), patterns("foo/**")),
             IgnoredSubdirectoriesValue.of(prefixes("foo"), patterns("foo/**")))
+        .runTests();
+  }
+
+  @Test
+  public void testCodecWithExcludes() throws Exception {
+    new SerializationTester(
+            IgnoredSubdirectoriesValue.of(prefixes(), patterns(), excludes()),
+            IgnoredSubdirectoriesValue.of(prefixes(), patterns("**/build"), excludes("tools/build")),
+            IgnoredSubdirectoriesValue.of(
+                prefixes("vendor"), patterns("**/node_modules"), excludes("apps/*/node_modules")),
+            IgnoredSubdirectoriesValue.of(
+                prefixes(), patterns(), excludes("foo/bar", "baz/**/qux")))
         .runTests();
   }
 }
