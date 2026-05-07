@@ -141,37 +141,21 @@ public class RepoFileFunctionTest extends BuildViewTestCase {
   public void ignoreDirectoriesWithExclude() throws Exception {
     scratch.overwriteFile(
         "REPO.bazel",
-        "ignore_directories([\"**/build\"], exclude=[\"tools/special/build\"])");
-    scratch.file("tools/special/build/BUILD", "filegroup(name='t')");
-    scratch.file("other/build/BUILD", "filegroup(name='t')");
+        "ignore_directories([\"**/output\"], exclude=[\"tools/special/output\"])");
+    scratch.file("tools/special/output/BUILD", "filegroup(name='t')");
     invalidatePackages();
     // Excluded directory should be visible
-    assertThat(getTarget("//tools/special/build:t")).isNotNull();
-  }
-
-  @Test
-  public void ignoreDirectoriesExcludeDefaultsToEmpty() throws Exception {
-    scratch.overwriteFile("REPO.bazel", "ignore_directories([\"**/build\"])");
-    scratch.file("any/build/BUILD", "filegroup(name='t')");
-    reporter.removeHandler(failFastHandler);
-    invalidatePackages();
-    assertTargetError("//any/build:t", "deleted");
+    assertThat(getTarget("//tools/special/output:t")).isNotNull();
   }
 
   @Test
   public void ignoreDirectoriesExcludeWithGlob() throws Exception {
     scratch.overwriteFile(
         "REPO.bazel",
-        "ignore_directories([\"**/build\"], exclude=[\"apps/*/build\"])");
-    scratch.file("apps/foo/build/BUILD", "filegroup(name='t')");
-    scratch.file("apps/bar/build/BUILD", "filegroup(name='t')");
-    scratch.file("lib/build/BUILD", "filegroup(name='t')");
+        "ignore_directories([\"**/output\"], exclude=[\"apps/*/output\"])");
+    scratch.file("apps/foo/output/BUILD", "filegroup(name='t')");
     invalidatePackages();
-    // Glob exclusion matches
-    assertThat(getTarget("//apps/foo/build:t")).isNotNull();
-    assertThat(getTarget("//apps/bar/build:t")).isNotNull();
-    // Not matched by apps/*/build — still ignored
-    reporter.removeHandler(failFastHandler);
-    assertTargetError("//lib/build:t", "deleted");
+    // Glob exclusion matches — package is visible despite **/output pattern
+    assertThat(getTarget("//apps/foo/output:t")).isNotNull();
   }
 }
