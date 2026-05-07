@@ -29,6 +29,7 @@ public class RepoThreadContext extends StarlarkThreadContext {
   private boolean repoFunctionCalled = false;
 
   private ImmutableList<String> ignoredDirectories = ImmutableList.of();
+  private ImmutableList<String> excludedDirectories = ImmutableList.of();
   private boolean ignoredDirectoriesSet = false;
 
   public static RepoThreadContext fromOrFail(StarlarkThread thread, String what)
@@ -62,11 +63,19 @@ public class RepoThreadContext extends StarlarkThreadContext {
     this.ignoredDirectories = ImmutableList.copyOf(ignoredDirectories);
   }
 
+  public void setExcludedDirectories(Collection<String> excludedDirectories) throws EvalException {
+    this.excludedDirectories = ImmutableList.copyOf(excludedDirectories);
+  }
+
   public boolean isIgnoredDirectoriesSet() {
     return ignoredDirectoriesSet;
   }
 
   public ImmutableList<String> getIgnoredDirectories() {
     return ignoredDirectories;
+  }
+
+  public ImmutableList<String> getExcludedDirectories() {
+    return excludedDirectories;
   }
 }
