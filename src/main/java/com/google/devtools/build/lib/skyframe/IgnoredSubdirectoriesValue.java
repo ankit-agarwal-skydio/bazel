@@ -40,9 +40,17 @@ public class IgnoredSubdirectoriesValue implements SkyValue {
 
   public static IgnoredSubdirectoriesValue of(
       ImmutableSet<PathFragment> prefixes, ImmutableList<String> patterns) {
-    return prefixes.isEmpty() && patterns.isEmpty()
+    return of(prefixes, patterns, ImmutableList.of());
+  }
+
+  public static IgnoredSubdirectoriesValue of(
+      ImmutableSet<PathFragment> prefixes,
+      ImmutableList<String> patterns,
+      ImmutableList<String> excludePatterns) {
+    return prefixes.isEmpty() && patterns.isEmpty() && excludePatterns.isEmpty()
         ? EMPTY
-        : new IgnoredSubdirectoriesValue(IgnoredSubdirectories.of(prefixes, patterns));
+        : new IgnoredSubdirectoriesValue(
+            IgnoredSubdirectories.of(prefixes, patterns, excludePatterns));
   }
 
   public static IgnoredSubdirectoriesValue of(IgnoredSubdirectories ignoredSubdirectories) {
